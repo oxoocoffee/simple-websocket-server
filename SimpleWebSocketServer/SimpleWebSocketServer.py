@@ -573,7 +573,7 @@ class WebSocket(object):
 
 
 class SimpleWebSocketServer(object):
-   def __init__(self, host, port, websocketclass, selectInterval = 0.1):
+   def __init__(self, host, port, websocketclass, selectInterval = 0.1, opaque=None):
       self.websocketclass = websocketclass
       self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -582,8 +582,10 @@ class SimpleWebSocketServer(object):
       self.selectInterval = selectInterval
       self.connections = {}
       self.listeners = [self.serversocket]
+      self.opaque = opaque
 
    def _decorateSocket(self, sock):
+      # sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
       return sock
 
    def _constructWebSocket(self, sock, address):
@@ -624,7 +626,7 @@ class SimpleWebSocketServer(object):
          try:
             while client.sendq:
                opcode, payload = client.sendq.popleft()
-               remaining = client._sendBuffer(payload)
+               remaining = client._sendBuffer(payload, True)
                if remaining is not None:
                    client.sendq.appendleft((opcode, remaining))
                    break
@@ -680,10 +682,12 @@ class SimpleWebSocketServer(object):
 class SimpleSSLWebSocketServer(SimpleWebSocketServer):
 
    def __init__(self, host, port, websocketclass, certfile,
-                keyfile, version = ssl.PROTOCOL_TLSv1, selectInterval = 0.1):
+                keyfile, version = ssl.PROTOCOL_TLSv1,
+                selectInterval = 0.1, opaque=None):
 
       SimpleWebSocketServer.__init__(self, host, port,
-                                        websocketclass, selectInterval)
+                                        websocketclass, selectInterval,
+                                        opaque)
 
       self.context = ssl.SSLContext(version)
       self.context.load_cert_chain(certfile, keyfile)
