@@ -423,6 +423,8 @@ class WebSocket(object):
 
         self.sendq.append((opcode, payload))
 
+        self.__logDebug('send queue size {}'.format(len(self.sendq)))
+
 
    def _parseMessage(self, byte):
       # read in the header
@@ -586,7 +588,7 @@ class WebSocket(object):
 
 class SimpleWebSocketServer(object):
    def __init__(self, host, port, websocketclass, selectInterval = 0.1,
-      logInfo=None, logDebug=None, opaque=None, serverType="WS"):
+      logInfo=None, logDebug=None, opaque=None, serverType="WS "):
       self.websocketclass = websocketclass
       self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -710,9 +712,25 @@ class SimpleWebSocketServer(object):
             del self.connections[failed]
             self.listeners.remove(failed)
 
+   def closeClient(self, client, status = 1000, reason = u''):
+        if client:
+            fileno = client.client.fileno()
+
+            if fileno in self.connections:
+                self.logDebug("closeClient: {}".format(client.address))
+                
+                client.close(status, reason)
+                self._handleClose(client)
+                del self.connections[fileno]
+                self.listeners.remove(fileno)
+            else:
+                self.logDebug("closeClient not found: {}".format(client.address))
+        else:
+            self.logDebug("closeClient invalid")
+
    def serveforever(self):
-      while True:
-         self.serveonce()
+        while True:
+            self.serveonce()
 
 class SimpleSSLWebSocketServer(SimpleWebSocketServer):
 
