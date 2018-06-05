@@ -2,6 +2,7 @@
 The MIT License (MIT)
 Copyright (c) 2013 Dave P.
 '''
+import traceback
 import sys
 VER = sys.version_info[0]
 if VER >= 3:
@@ -101,11 +102,22 @@ class WebSocket(object):
       self.closed = False
       self.sendq = deque()
 
+      self._log_info = None
+      self._log_debug = None
+
       self.state = HEADERB1
 
       # restrict the size of header and payload for security reasons
       self.maxheader = MAXHEADER
       self.maxpayload = MAXPAYLOAD
+
+   def __logInfo(self, msg):
+      if self._log_info:
+         self._log_info(msg)
+
+   def __logDebug(self, msg):
+      if self._log_debug:
+         self._log_debug(msg)
 
    def handleMessage(self):
       """
@@ -573,7 +585,8 @@ class WebSocket(object):
 
 
 class SimpleWebSocketServer(object):
-   def __init__(self, host, port, websocketclass, selectInterval = 0.1, opaque=None):
+   def __init__(self, host, port, websocketclass, selectInterval = 0.1,
+      logInfo=None, logDebug=None, opaque=None, serverType="WS"):
       self.websocketclass = websocketclass
       self.serversocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
       self.serversocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -583,6 +596,18 @@ class SimpleWebSocketServer(object):
       self.connections = {}
       self.listeners = [self.serversocket]
       self.opaque = opaque
+      self._serverType=serverType
+      self._logInfo = logInfo
+      self._logDebug = logDebug
+      self.logInfo("init")
+
+   def logInfo(self, msg):
+      if self._logInfo:
+         self._logInfo('{0}: {1}'.format(self._serverType, msg))
+
+   def logDebug(self, msg):
+      if self._logDebug:
+         self._logDebug('{0}: {1}'.format(self._serverType, msg))
 
    def _decorateSocket(self, sock):
       # sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -599,7 +624,9 @@ class SimpleWebSocketServer(object):
          self._handleClose(conn)
 
    def _handleClose(self, client):
+      self.logDebug('_handleClose {}'.format(client.address))
       client.client.close()
+      client.closed = True
       # only call handleClose when we have a successful websocket connection
       if client.handshaked:
          try:
@@ -621,6 +648,9 @@ class SimpleWebSocketServer(object):
       else:
          rList, wList, xList = select(self.listeners, writers, self.listeners)
 
+      if len(wList) or len(rList) or len(xList):
+         self.logDebug('select w({0}) r({1}) x({2})'.format(len(wList), len(rList), len(xList)))
+
       for ready in wList:
          client = self.connections[ready]
          try:
@@ -635,6 +665,7 @@ class SimpleWebSocketServer(object):
                       raise Exception('received client close')
 
          except Exception as n:
+            self.logDebug("wList exception: {}".format(n.message))
             self._handleClose(client)
             del self.connections[ready]
             self.listeners.remove(ready)
@@ -650,6 +681,7 @@ class SimpleWebSocketServer(object):
                self.connections[fileno] = self._constructWebSocket(newsock, address)
                self.listeners.append(fileno)
             except Exception as n:
+               self.logDebug("rlist exception: {}".format(n.message))
                if sock is not None:
                   sock.close()
          else:
@@ -659,6 +691,7 @@ class SimpleWebSocketServer(object):
             try:
                client._handleData()
             except Exception as n:
+               self.logDebug("rlist exception: {}".format(n.message))
                self._handleClose(client)
                del self.connections[ready]
                self.listeners.remove(ready)
@@ -669,8 +702,10 @@ class SimpleWebSocketServer(object):
             raise Exception('server socket failed')
          else:
             if failed not in self.connections:
+               self.logDebug("xlist closing: {}".format(failed))
                continue
             client = self.connections[failed]
+            self.logDebug("xlist closing: {}".format(client))
             self._handleClose(client)
             del self.connections[failed]
             self.listeners.remove(failed)
@@ -683,11 +718,12 @@ class SimpleSSLWebSocketServer(SimpleWebSocketServer):
 
    def __init__(self, host, port, websocketclass, certfile,
                 keyfile, version = ssl.PROTOCOL_TLSv1,
-                selectInterval = 0.1, opaque=None):
+                selectInterval = 0.1, logInfo=None, logDebug=None,
+                opaque=None, serverType="WSS"):
 
       SimpleWebSocketServer.__init__(self, host, port,
                                         websocketclass, selectInterval,
-                                        opaque)
+                                        logInfo, logDebug, opaque, serverType)
 
       self.context = ssl.SSLContext(version)
       self.context.load_cert_chain(certfile, keyfile)
