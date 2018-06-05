@@ -113,11 +113,11 @@ class WebSocket(object):
 
    def __logInfo(self, msg):
       if self._log_info:
-         self._log_info(msg)
+         self._log_info('{0}: {1}'.format(self.address, msg))
 
    def __logDebug(self, msg):
       if self._log_debug:
-         self._log_debug(msg)
+         self._log_debug('{0}: {1}'.format(self.address, msg))
 
    def handleMessage(self):
       """
